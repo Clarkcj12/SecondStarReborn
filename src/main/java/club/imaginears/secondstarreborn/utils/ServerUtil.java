@@ -1,21 +1,26 @@
 package club.imaginears.secondstarreborn.utils;
 
 import club.imaginears.secondstarreborn.SecondStar;
-import com.mongodb.internal.connection.Server;
-import com.velocitypowered.api.proxy.Player;
-import com.velocitypowered.api.proxy.ServerConnection;
+import club.imaginears.secondstarreborn.handlers.Player;
+import club.imaginears.secondstarreborn.handlers.Server;
 import com.velocitypowered.api.proxy.server.ServerInfo;
 import lombok.Getter;
 
 import java.net.InetSocketAddress;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.logging.Level;
 
 public class ServerUtil {
-    private final HashMap<String, Server> servers = new HashMap<>();
+    private final Map<String, Server> servers = HashMap.newHashMap(); // Java 22 `HashMap` factory method
     private ServerInfo currentHub;
-    @Getter private int onlineCount = 0;
-    @Getter private final List<String> onlinePlayerNames = new ArrayList<>();
+    @Getter
+    private int onlineCount = 0;
+    @Getter
+    private final List<String> onlinePlayerNames = Collections.synchronizedList(new ArrayList<>());
+
+    // Scheduled executor to replace `Timer` for periodic tasks
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
     public ServerUtil() {
         loadServers();
@@ -24,12 +29,12 @@ public class ServerUtil {
 
         SecondStar.getProxyServer().setReconnectHandler(new ReconnectHandler() {
             @Override
-            public ServerInfo getServer(Player proxiedPlayer) {
+            public ServerInfo getServer(com.velocitypowered.api.proxy.Player proxiedPlayer) {
                 return currentHub;
             }
 
             @Override
-            public void setServer(Player proxiedPlayer) {
+            public void setServer(com.velocitypowered.api.proxy.Player proxiedPlayer) {
             }
 
             @Override
@@ -41,88 +46,98 @@ public class ServerUtil {
             }
         });
 
-        new Timer().schedule(new TimerTask() {
-            @Override
-            public void run() {
-                try {
-                    onlineCount = SecondStar.getMongoHandler().getOnlineCount();
-                } catch (Exception e) {
-                    SecondStar.getProxyServer().getLogger().log(Level.SEVERE, "Error retrieving global player count", e);
-                }
-                try {
-                    List<String> names = SecondStar.getMongoHandler().getOnlinePlayerNames();
-                    onlinePlayerNames.clear();
-                    onlinePlayerNames.addAll(names);
-                } catch (Exception e) {
-                    SecondStar.getProxyServer().getLogger().log(Level.SEVERE, "Error updating online player name list", e);
-                }
-                try {
-                    int currentCount = servers.get(currentHub.getName()).getCount();
-                    for (Server server : servers.values()) {
-                        if (!server.getName().startsWith("Hub")) continue;
-                        if (server.getCount() < currentCount) {
-                            currentCount = server.getCount();
-                            currentHub = getServerInfo(server.getName(), true);
-                        }
-                    }
-                } catch (Exception e) {
-                    SecondStar.getProxyServer().getLogger().log(Level.SEVERE, "Error determining currentHub", e);
-                }
-                try {
-                    for (Player tp : SecondStar.getOnlinePlayers()) {
-                        if (tp.getProxiedPlayer().isEmpty() && (System.currentTimeMillis() - tp.getLoginTime()) > 5000) {
-                            SecondStar.logout(tp.getUniqueId(), tp);
-                        }
-                    }
-                } catch (Exception e) {
-                    SecondStar.getProxyServer().getLogger().log(Level.SEVERE, "Error maintaining online player list", e);
-                }
-            }
-        }, 2000L, 5000L);
+        // Schedule periodic tasks to replace `Timer`
+        scheduler.scheduleAtFixedRate(this::updateOnlineCount, 2, 5, TimeUnit.SECONDS);
+        scheduler.scheduleAtFixedRate(this::updateOnlinePlayerNames, 2, 5, TimeUnit.SECONDS);
+        scheduler.scheduleAtFixedRate(this::determineCurrentHub, 2, 5, TimeUnit.SECONDS);
+        scheduler.scheduleAtFixedRate(this::removeDisconnectedPlayers, 5, 5, TimeUnit.SECONDS);
     }
 
     private void loadServers() {
         servers.clear();
-//        ProxyServer.getInstance().getServers().clear();
         try {
-            List<Server> servers = SecondStar.getMongoHandler().getServers(SecondStar.isTestNetwork());
-            for (Server s : servers) {
-                this.servers.put(s.getName(), s);
+            List<Server> serverList = SecondStar.getMongoHandler().getServers(SecondStar.isTestNetwork());
+            for (Server server : serverList) {
+                servers.put(server.getName(), server);
                 try {
-                    String[] addressList = s.getAddress().split(":");
-                    ServerInfo info = ProxyServer.getInstance().constructServerInfo(s.getName(),
-                            new InetSocketAddress(addressList[0], Integer.parseInt(addressList[1])), "", false);
-                    ProxyServer.getInstance().getServers().put(info.getName(), info);
+                    String[] addressList = server.getAddress().split(":");
+                    ServerInfo serverInfo = SecondStar.getProxyServer().createServer(
+                            new InetSocketAddress(addressList[0], Integer.parseInt(addressList[1])),
+                            server.getName(),
+                            Optional.empty()
+                    );
+                    SecondStar.getProxyServer().registerServer(serverInfo);
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    SecondStar.getProxyServer().getLogger().log(Level.SEVERE, "Error registering server: " + server.getName(), e);
                 }
             }
-            SecondStar.getProxyServer().getLogger().info("Successfully loaded " + servers.size() + " servers!");
+            SecondStar.getProxyServer().getLogger().info("Successfully loaded " + serverList.size() + " servers!");
         } catch (Exception e) {
-            SecondStar.getProxyServer().getLogger().log(Level.SEVERE, "Error loading servers, stopping bungee server!", e);
+            SecondStar.getProxyServer().getLogger().log(Level.SEVERE, "Error loading servers, shutting down proxy server.", e);
             System.exit(1);
         }
     }
 
-    public ServerInfo getServerInfo(String name, boolean exact) {
-        for (ServerInfo info : ProxyServer.getInstance().getServers().values()) {
-            if ((exact && info.getName().equals(name)) || (!exact && info.getName().equalsIgnoreCase(name)))
-                return info;
+    private void updateOnlineCount() {
+        try {
+            onlineCount = SecondStar.getMongoHandler().getOnlineCount();
+        } catch (Exception e) {
+            SecondStar.getProxyServer().getLogger().log(Level.SEVERE, "Error retrieving global player count", e);
         }
-        return null;
+    }
+
+    private void updateOnlinePlayerNames() {
+        try {
+            List<String> names = SecondStar.getMongoHandler().getOnlinePlayerNames();
+            synchronized (onlinePlayerNames) {
+                onlinePlayerNames.clear();
+                onlinePlayerNames.addAll(names);
+            }
+        } catch (Exception e) {
+            SecondStar.getProxyServer().getLogger().log(Level.SEVERE, "Error updating online player name list", e);
+        }
+    }
+
+    private void determineCurrentHub() {
+        try {
+            int currentCount = servers.get(currentHub.getName()).getCount();
+            for (Server server : servers.values()) {
+                if (!server.getName().startsWith("Hub")) continue;
+                if (server.getCount() < currentCount) {
+                    currentCount = server.getCount();
+                    currentHub = getServerInfo(server.getName(), true);
+                }
+            }
+        } catch (Exception e) {
+            SecondStar.getProxyServer().getLogger().log(Level.SEVERE, "Error determining currentHub", e);
+        }
+    }
+
+    private void removeDisconnectedPlayers() {
+        try {
+            for (Player player : SecondStar.getOnlinePlayers()) {
+                if (player.getProxiedPlayer().isEmpty() && (System.currentTimeMillis() - player.getLoginTime()) > 5000) {
+                    SecondStar.logout(player.getUniqueId(), player);
+                }
+            }
+        } catch (Exception e) {
+            SecondStar.getProxyServer().getLogger().log(Level.SEVERE, "Error maintaining online player list", e);
+        }
+    }
+
+    public ServerInfo getServerInfo(String name, boolean exact) {
+        return SecondStar.getProxyServer().getAllServers().stream()
+                .map(server -> (ServerInfo) server)
+                .filter(info -> exact ? info.getName().equals(name) : info.getName().equalsIgnoreCase(name))
+                .findFirst()
+                .orElse(null);
     }
 
     public Server getServer(String name, boolean exact) {
-        if (exact) return servers.get(name);
-        for (Server s : servers.values()) {
-            if (s.getName().equalsIgnoreCase(name))
-                return s;
-        }
-        return null;
-    }
-
-    public int getServerCount(net.md_5.bungee.api.connection.Server server) {
-        return getServerCount(server.getInfo().getName());
+        return servers.values().stream()
+                .filter(server -> exact ? server.getName().equals(name) : server.getName().equalsIgnoreCase(name))
+                .findFirst()
+                .orElse(null);
     }
 
     public int getServerCount(String name) {
@@ -138,94 +153,29 @@ public class ServerUtil {
     }
 
     public List<Server> getServers() {
-        return new ArrayList<>(servers.values());
+        return List.copyOf(servers.values());
     }
 
-    public void sendPlayer(Player player, String serverName) {
+    public void sendPlayer(com.velocitypowered.api.proxy.Player player, String serverName) {
         Server server = getServer(serverName, true);
-        if (server == null) return;
-        server.join(player);
-    }
-
-    public void sendPlayer(Player player, Server server) {
-        if (server == null) return;
-        server.join(player);
-    }
-
-    public void handleServerSwitch(UUID uuid, ServerInfo fromInfo, ServerInfo toInfo) {
-        Player tp = SecondStar.getPlayer(uuid);
-        Server from = fromInfo == null ? null : getServer(fromInfo.getName(), true);
-        Server to = toInfo == null ? null : getServer(toInfo.getName(), true);
-        if (from == null) {
-            // new connection
-            if (tp.isDisabled()) {
-                try {
-                    tp.sendPacket(new DisablePlayerPacket(tp.getUniqueId(), true), true);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    tp.kickPlayer("Internal Exception: java.io.IOException: An existing connection was forcibly closed by the remote host", false);
-                }
-            }
-        }
-        if (to == null) {
-            // unknown error
-        } else {
-            SecondStar.getMongoHandler().setPlayerServer(uuid, to.getName());
-        }
-    }
-
-    public Server getServerByType(String serverType) {
-        return getServerByType(serverType, null);
-    }
-
-    public Server getServerByType(String serverType, UUID exclude) {
-        Server server = null;
-        for (Server s : servers.values()) {
-            if ((s.getUniqueId().equals(exclude)) || !s.isOnline()) continue;
-            if (s.getServerType().equals(serverType)) {
-                if (server == null) {
-                    server = s;
-                    continue;
-                }
-                if (s.getCount() < server.getCount()) server = s;
-            }
-        }
-        return server;
-    }
-
-    public void sendPlayerByType(Player player, String serverType) {
-        Server server = getServerByType(serverType);
         if (server != null) server.join(player);
     }
 
-
-    public Server getEmptyParkServer(UUID exclude) {
-        Server s = null;
-        List<Server> servers = new ArrayList<>(this.servers.values());
-        for (Server server : servers) {
-            if ((server.getUniqueId().equals(exclude)) || !server.isOnline() || !server.isPark()) continue;
-            if (s == null) {
-                s = server;
-                continue;
-            }
-            if (server.getCount() < s.getCount()) {
-                s = server;
-            }
-        }
-        return s;
+    public void sendPlayer(com.velocitypowered.api.proxy.Player player, Server server) {
+        if (server != null) server.join((Player) player);
     }
 
     public String getChannel(Player player) {
-        String serverName = player.getServerName();
-        Server server = getServer(serverName, true);
-        if (server == null) {
-            return "";
-        }
-        return server.isPark() ? "ParkChat" : server.getName();
+        Server server = getServer(player.getServerName(), true);
+        return server != null && server.isPark() ? "ParkChat" : Optional.ofNullable(server).map(Server::getName).orElse("");
     }
 
-    public boolean isOnPark(Player tp) {
-        Server server = getServer(tp.getServerName(), true);
+    public boolean isOnPark(Player player) {
+        Server server = getServer(player.getServerName(), true);
         return server != null && server.isPark();
+    }
+
+    public void shutdown() {
+        scheduler.shutdownNow();
     }
 }
