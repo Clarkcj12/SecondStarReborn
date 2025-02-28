@@ -1,21 +1,31 @@
 package club.imaginears.secondstarreborn.handlers;
 
-import lombok.AllArgsConstructor;
-import lombok.Getter;
 import net.kyori.adventure.text.format.NamedTextColor;
 
-@Getter
-@AllArgsConstructor
 public enum Subsystem {
     PART("Party", NamedTextColor.BLUE);
-    String name;
-    NamedTextColor color;
 
-    public String getPrefix(){
-        return color + "[" + name + "] ";
+    private final String name;
+    private final NamedTextColor color;
+
+    Subsystem(String name, NamedTextColor color) {
+        this.name = name;
+        this.color = color;
     }
 
-    public String getComponentPrefix(){
-        return color + "[" + name + "] ";
+    public String getName() {
+        return name;
+    }
+
+    public NamedTextColor getColor() {
+        return color;
+    }
+
+    public String getPrefix() {
+        return color.toString() + "[" + name + "] ";
+    }
+
+    public String getComponentPrefix() {
+        return getPrefix();
     }
 }
