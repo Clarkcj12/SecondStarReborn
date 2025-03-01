@@ -38,7 +38,9 @@ public class SlackAttachment {
     public SlackAttachment(String text) {
         this.text = Objects.requireNonNull(text, "Text cannot be null");
     }
-    public static class Field {
+
+    // Static Field class as a standalone component (SRP compliance)
+    public static final class Field {
         @SerializedName("title")
         private final String title;
         @SerializedName("value")
@@ -47,8 +49,8 @@ public class SlackAttachment {
         private final boolean isShort;
 
         public Field(String title, String value, boolean isShort) {
-            this.title = title;
-            this.value = value;
+            this.title = Objects.requireNonNullElse(title, "");
+            this.value = Objects.requireNonNullElse(value, "");
             this.isShort = isShort;
         }
 
