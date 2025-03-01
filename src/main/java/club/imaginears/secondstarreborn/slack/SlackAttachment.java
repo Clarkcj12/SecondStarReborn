@@ -5,9 +5,11 @@ import lombok.Getter;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Collections;
 import java.util.Objects;
 
 public class SlackAttachment {
+
     @SerializedName("fallback")
     private String fallback;
     @SerializedName("color")
@@ -24,6 +26,7 @@ public class SlackAttachment {
     private String title;
     @SerializedName("title_link")
     private String titleLink;
+    @Getter
     @SerializedName("text")
     private String text;
     @SerializedName("image_url")
@@ -62,21 +65,6 @@ public class SlackAttachment {
         }
     }
 
-    public SlackAttachment fallback(String fallbackText) {
-        this.fallback = fallbackText;
-        return this;
-    }
-
-    public SlackAttachment color(String colorInHex) {
-        this.color = colorInHex;
-        return this;
-    }
-
-    public SlackAttachment preText(String pretext) {
-        this.pretext = pretext;
-        return this;
-    }
-
     // Builder pattern for encapsulating author information
     public record Author(String name, String link, String icon) {
         public Author(String name) {
@@ -88,47 +76,72 @@ public class SlackAttachment {
         }
     }
 
+    // Author methods refactored to use Author record
+    public SlackAttachment author(Author author) {
+        this.authorName = author.name();
+        this.authorLink = author.link();
+        this.authorIcon = author.icon();
+        return this;
+    }
 
-    public SlackAttachment author(String name, String link, String iconOrImageLink) {
-        this.authorIcon = iconOrImageLink;
-        return author(name, link);
+    public SlackAttachment fallback(String fallbackText) {
+        this.fallback = Objects.requireNonNullElse(fallbackText, "");
+        return this;
+    }
+
+    public SlackAttachment color(String colorInHex) {
+        this.color = Objects.requireNonNullElse(colorInHex, "");
+        return this;
+    }
+
+    public SlackAttachment preText(String pretext) {
+        this.pretext = Objects.requireNonNullElse(pretext, "");
+        return this;
     }
 
     public SlackAttachment title(String title) {
-        this.title = title;
+        this.title = Objects.requireNonNullElse(title, "");
         return this;
     }
 
     public SlackAttachment title(String title, String link) {
-        this.titleLink = link;
-        return title(title);
+        this.title = Objects.requireNonNullElse(title, "");
+        this.titleLink = Objects.requireNonNullElse(link, "");
+        return this;
     }
 
     public SlackAttachment imageUrl(String imageUrl) {
-        this.imageUrl = imageUrl;
+        this.imageUrl = Objects.requireNonNullElse(imageUrl, "");
         return this;
     }
 
     public SlackAttachment text(String text) {
-        this.text = text;
+        this.text = Objects.requireNonNull(text, "Text cannot be null");
         return this;
-    }
-
-    public SlackAttachment text(SlackMessage message) {
-        return text(message.toString());
     }
 
     public SlackAttachment addField(Field field) {
-        this.fields.add(field);
+        if (fields.size() >= MAX_FIELDS) {
+            throw new IllegalStateException("Cannot add more than " + MAX_FIELDS + " fields.");
+        }
+        fields.add(field);
         return this;
     }
 
-    public SlackAttachment addMarkdownIn(String markdownin) {
-        this.markdown.add(markdownin);
+    public SlackAttachment addMarkdownIn(String markdownIn) {
+        if (markdown.size() >= MAX_MARKDOWN_ELEMENTS) {
+            throw new IllegalStateException("Cannot add more than " + MAX_MARKDOWN_ELEMENTS + " markdown elements.");
+        }
+        this.markdown.add(Objects.requireNonNull(markdownIn, "Markdown element cannot be null"));
         return this;
     }
 
-    public String getText() {
-        return text;
+    // Getter methods to provide read-only access to lists (Thread-safety)
+    public List<Field> getFields() {
+        return Collections.unmodifiableList(fields);
+    }
+
+    public List<String> getMarkdown() {
+        return Collections.unmodifiableList(markdown);
     }
 }
