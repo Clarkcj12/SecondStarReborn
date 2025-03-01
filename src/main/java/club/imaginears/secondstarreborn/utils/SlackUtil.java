@@ -40,7 +40,7 @@ public class SlackUtil {
         }
         try {
             s.push(webhook, msg, attachments);
-        } catch (IOException e) {
+        } catch (IOException | InterruptedException e) {
             SecondStar.getProxyServer().getLogger().log(Level.SEVERE, "Error sending slack message", e);
         }
     }
