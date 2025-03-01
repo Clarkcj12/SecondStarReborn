@@ -4,8 +4,8 @@ import com.google.gson.annotations.SerializedName;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
-@SuppressWarnings("MismatchedQueryAndUpdateOfCollection")
 public class SlackAttachment {
     @SerializedName("fallback")
     private String fallback;
@@ -32,10 +32,12 @@ public class SlackAttachment {
     @SerializedName("mrkdwn_in")
     private final List<String> markdown = new ArrayList<>();
 
-    public SlackAttachment(String text) {
-        text(text);
-    }
+    private static final int MAX_FIELDS = 10; // Slack limit on fields per attachment
+    private static final int MAX_MARKDOWN_ELEMENTS = 10; // Example: Limit markdown elements
 
+    public SlackAttachment(String text) {
+        this.text = Objects.requireNonNull(text, "Text cannot be null");
+    }
     public static class Field {
         @SerializedName("title")
         private final String title;
