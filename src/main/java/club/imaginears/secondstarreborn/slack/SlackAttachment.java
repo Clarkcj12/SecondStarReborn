@@ -77,15 +77,17 @@ public class SlackAttachment {
         return this;
     }
 
-    public SlackAttachment author(String name) {
-        this.authorName = name;
-        return this;
+    // Builder pattern for encapsulating author information
+    public record Author(String name, String link, String icon) {
+        public Author(String name) {
+            this(name, null, null);
+        }
+
+        public Author(String name, String link) {
+            this(name, link, null);
+        }
     }
 
-    public SlackAttachment author(String name, String link) {
-        this.authorLink = link;
-        return author(name);
-    }
 
     public SlackAttachment author(String name, String link, String iconOrImageLink) {
         this.authorIcon = iconOrImageLink;
