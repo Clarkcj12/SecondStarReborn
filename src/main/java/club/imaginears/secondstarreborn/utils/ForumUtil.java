@@ -3,6 +3,8 @@ package club.imaginears.secondstarreborn.utils;
 import club.imaginears.secondstarreborn.SecondStar;
 import club.imaginears.secondstarreborn.handlers.Player;
 import club.imaginears.secondstarreborn.handlers.Rank;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import net.kyori.adventure.text.ComponentBuilder;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
