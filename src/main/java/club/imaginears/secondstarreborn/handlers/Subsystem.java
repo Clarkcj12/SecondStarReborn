@@ -3,7 +3,7 @@ package club.imaginears.secondstarreborn.handlers;
 import net.kyori.adventure.text.format.NamedTextColor;
 
 public enum Subsystem {
-    PART("Party", NamedTextColor.BLUE);
+    PARTY("Party", NamedTextColor.BLUE);
 
     private final String name;
     private final NamedTextColor color;
@@ -22,7 +22,7 @@ public enum Subsystem {
     }
 
     public String getPrefix() {
-        return color.toString() + "[" + name + "] ";
+        return STR."\{color.toString()}[\{name}] ";
     }
 
     public String getComponentPrefix() {
