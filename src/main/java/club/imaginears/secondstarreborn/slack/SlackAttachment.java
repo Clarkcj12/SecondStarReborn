@@ -1,6 +1,7 @@
 package club.imaginears.secondstarreborn.slack;
 
 import com.google.gson.annotations.SerializedName;
+import lombok.Getter;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,8 +42,10 @@ public class SlackAttachment {
 
     // Static Field class as a standalone component (SRP compliance)
     public static final class Field {
+        @Getter
         @SerializedName("title")
         private final String title;
+        @Getter
         @SerializedName("value")
         private final String value;
         @SerializedName("short")
@@ -52,14 +55,6 @@ public class SlackAttachment {
             this.title = Objects.requireNonNullElse(title, "");
             this.value = Objects.requireNonNullElse(value, "");
             this.isShort = isShort;
-        }
-
-        public String getTitle() {
-            return title;
-        }
-
-        public String getValue() {
-            return value;
         }
 
         public boolean isShort() {
